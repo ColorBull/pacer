@@ -84,6 +84,20 @@ function fitRoute(track, w, h, pad) {
       return { z, ox: (minX + maxX) / 2 - w / 2, oy: (minY + maxY) / 2 - h / 2, xy };
   }
 }
+const SIM_START = { lat: 32.0853, lon: 34.7818 };
+const mapDefs = id => html`<defs><filter id=${id} colorInterpolationFilters="sRGB">
+  <feColorMatrix key="a" type="matrix" values="-1 0 0 0 1 0 -1 0 0 1 0 0 -1 0 1 0 0 0 1 0"/>
+  <feColorMatrix key="b" type="hueRotate" values="180"/>
+  <feComponentTransfer key="c"><feFuncR type="linear" slope="0.8"/><feFuncG type="linear" slope="0.8"/><feFuncB type="linear" slope="0.88"/></feComponentTransfer>
+</filter></defs>`;
+// shortcut: public OSM tiles are fine for personal use; switch to a keyed tile provider if many people use the app
+function tileLayer(z, ox, oy, W, H, id) {
+  const n = 2 ** z, tiles = [];
+  for (let tx = Math.floor(ox / 256); tx <= Math.floor((ox + W) / 256); tx++)
+    for (let ty = Math.floor(oy / 256); ty <= Math.floor((oy + H) / 256); ty++)
+      if (ty >= 0 && ty < n) tiles.push(html`<image key=${tx + "_" + ty} href=${`https://tile.openstreetmap.org/${z}/${((tx % n) + n) % n}/${ty}.png`} x=${tx * 256 - ox} y=${ty * 256 - oy} width="256" height="256"/>`);
+  return html`<g filter=${`url(#${id})`}>${tiles}</g>`;
+}
 const pctl = (arr, q) => { const a = [...arr].sort((x, y) => x - y); return a[Math.min(a.length - 1, Math.floor(q * a.length))]; };
 
 /* ---------- language ---------- */
@@ -99,7 +113,7 @@ const T = {
       silent: "Speech didn't start. Check the phone isn't on silent and media volume is up. Alerts will fall back to tones.",
       error: "Speech failed on this device. Alerts will play as tones instead." },
     source: "Tracking source", sim: "Simulation", simSub: "Test indoors", gps: "GPS", gpsSub: "Real location",
-    switchHint: "Pause and finish the run to switch source.", language: "Language", route: "Route", paceChart: "Pace", time: "Time", avgPace: "Avg pace", fastest: "Fastest split", noTrack: "No route was recorded for this run.", mapCredit: "© OpenStreetMap · © CARTO", installTitle: "App", installBtn: "Install as app", installIos: "In Safari tap the Share button, then “Add to Home Screen”.", installed: "Installed as an app.", installOther: "Use your browser menu: “Install app” or “Add to Home screen”.", history: "Past runs", noRuns: "No saved runs yet. A run is saved when you tap Finish.", del: "Delete", confirmDel: "Tap again", closeHistory: "Close past runs", runs: n => `${n} run${n === 1 ? "" : "s"}`, total: "Total",
+    switchHint: "Pause and finish the run to switch source.", language: "Language", route: "Route", paceChart: "Pace", time: "Time", avgPace: "Avg pace", fastest: "Fastest split", noTrack: "No route was recorded for this run.", mapCredit: "© OpenStreetMap contributors", tabStats: "Stats", tabMap: "Map", locating: "Finding your location…", zoomIn: "Zoom in", zoomOut: "Zoom out", simStart: "Simulated start point", installTitle: "App", installBtn: "Install as app", installIos: "In Safari tap the Share button, then “Add to Home Screen”.", installed: "Installed as an app.", installOther: "Use your browser menu: “Install app” or “Add to Home screen”.", history: "Past runs", noRuns: "No saved runs yet. A run is saved when you tap Finish.", del: "Delete", confirmDel: "Tap again", closeHistory: "Close past runs", runs: n => `${n} run${n === 1 ? "" : "s"}`, total: "Total",
     splitAvg: "Split avg. pace", current: "Current", distance: "Distance (km)", avg: "Avg", speed: "Speed", kmh: "km/h", perKm: "/km", sec: "s", m: "m",
     ready: "Ready", pressStart: "Press start", settling: "Settling in", settlingSub: "Coaching starts after a few seconds",
     onTarget: "On target", onTargetSub: (tol, p) => `Within ±${tol}s of ${p}`,
@@ -125,7 +139,7 @@ const T = {
       silent: "ההקראה לא התחילה. בדוק שהטלפון לא על שקט ושעוצמת המדיה פתוחה. ההתראות יעברו לצפצופים.",
       error: "ההקראה נכשלה במכשיר הזה. ההתראות יושמעו כצפצופים." },
     source: "מקור מעקב", sim: "סימולציה", simSub: "בדיקה בבית", gps: "GPS", gpsSub: "מיקום אמיתי",
-    switchHint: "עצור וסיים את הריצה כדי להחליף מקור.", language: "שפה", route: "מסלול", paceChart: "קצב", time: "זמן", avgPace: "קצב ממוצע", fastest: "הקטע המהיר", noTrack: "לא נשמר מסלול לריצה הזו.", mapCredit: "© OpenStreetMap · © CARTO", installTitle: "אפליקציה", installBtn: "התקן כאפליקציה", installIos: "בספארי לוחצים על כפתור השיתוף ואז “הוסף למסך הבית”.", installed: "מותקן כאפליקציה.", installOther: "בתפריט הדפדפן בוחרים “התקן אפליקציה” או “הוסף למסך הבית”.", history: "ריצות קודמות", noRuns: "עוד אין ריצות שמורות. ריצה נשמרת כשלוחצים סיום.", del: "מחק", confirmDel: "לחץ שוב", closeHistory: "סגור ריצות קודמות", runs: n => n === 1 ? "ריצה אחת" : `${n} ריצות`, total: "סה״כ",
+    switchHint: "עצור וסיים את הריצה כדי להחליף מקור.", language: "שפה", route: "מסלול", paceChart: "קצב", time: "זמן", avgPace: "קצב ממוצע", fastest: "הקטע המהיר", noTrack: "לא נשמר מסלול לריצה הזו.", mapCredit: "© OpenStreetMap contributors", tabStats: "נתונים", tabMap: "מפה", locating: "מאתר את המיקום שלך…", zoomIn: "התקרב", zoomOut: "התרחק", simStart: "נקודת התחלה מדומה", installTitle: "אפליקציה", installBtn: "התקן כאפליקציה", installIos: "בספארי לוחצים על כפתור השיתוף ואז “הוסף למסך הבית”.", installed: "מותקן כאפליקציה.", installOther: "בתפריט הדפדפן בוחרים “התקן אפליקציה” או “הוסף למסך הבית”.", history: "ריצות קודמות", noRuns: "עוד אין ריצות שמורות. ריצה נשמרת כשלוחצים סיום.", del: "מחק", confirmDel: "לחץ שוב", closeHistory: "סגור ריצות קודמות", runs: n => n === 1 ? "ריצה אחת" : `${n} ריצות`, total: "סה״כ",
     splitAvg: "קצב ממוצע למקטע", current: "נוכחי", distance: "מרחק (ק״מ)", avg: "ממוצע", speed: "מהירות", kmh: "קמ״ש", perKm: "/ק״מ", sec: "ש׳", m: "מ׳",
     ready: "מוכן", pressStart: "לחץ התחל", settling: "מתייצב", settlingSub: "האימון הקולי מתחיל אחרי כמה שניות",
     onTarget: "בקצב היעד", onTargetSub: (tol, p) => `בטווח ±${tol} ש׳ מ-${p}`,
@@ -283,15 +297,12 @@ function Settings({ s, t, set, close, running }) {
 }
 
 function RouteMap({ track, t }) {
-  const W = 400, H = 240, { z, ox, oy, xy } = fitRoute(track, W, H, 28), n = 2 ** z, tiles = [];
-  for (let tx = Math.floor(ox / 256); tx <= Math.floor((ox + W) / 256); tx++)
-    for (let ty = Math.floor(oy / 256); ty <= Math.floor((oy + H) / 256); ty++)
-      if (ty >= 0 && ty < n) tiles.push(html`<image key=${tx + "_" + ty} href=${`https://${"abcd"[(tx + ty) & 3]}.basemaps.cartocdn.com/dark_all/${z}/${((tx % n) + n) % n}/${ty}@2x.png`} x=${tx * 256 - ox} y=${ty * 256 - oy} width="256" height="256"/>`);
+  const W = 400, H = 240, { z, ox, oy, xy } = fitRoute(track, W, H, 28);
   const pts = xy.map(([x, y]) => `${(x - ox).toFixed(1)},${(y - oy).toFixed(1)}`);
   const [sx, sy] = pts[0].split(","), [ex, ey] = pts[pts.length - 1].split(",");
   return html`<figure className="mt-2" dir="ltr">
     <svg viewBox=${`0 0 ${W} ${H}`} className="w-full block rounded-xl" style=${{ background: "#1b1b1f" }} role="img" aria-label=${t.route}>
-      ${tiles}
+      ${mapDefs("dm-route")}${tileLayer(z, ox, oy, W, H, "dm-route")}
       <polyline points=${pts.join(" ")} fill="none" stroke="#000" strokeOpacity="0.45" strokeWidth="7" strokeLinejoin="round" strokeLinecap="round"/>
       <polyline points=${pts.join(" ")} fill="none" stroke="var(--accent)" strokeWidth="4" strokeLinejoin="round" strokeLinecap="round"/>
       <circle cx=${sx} cy=${sy} r="6" fill="var(--good)" stroke="#fff" strokeWidth="2"/>
@@ -323,6 +334,26 @@ function PaceChart({ series, target }) {
     <line x1=${L} x2=${W - R} y1=${yOf(target)} y2=${yOf(target)} stroke="var(--fg)" strokeWidth="1.2" strokeDasharray="5 4"/>
     <text x=${W - R - 2} y=${yOf(target) - 5} textAnchor="end" fontSize="10" fill="var(--fg)" className="num">${fmtPace(target)}</text>
   </svg>`;
+}
+
+function LiveMap({ track, pos, t, isSim }) {
+  const [z, setZ] = useState(16);
+  if (!pos) return html`<div className="absolute inset-0 flex items-center justify-center text-sm gutter text-center" style=${{ color: "var(--muted)" }}>${t.locating}</div>`;
+  const W = 400, H = 400, [cx, cy] = merc(pos.lat, pos.lon, z), ox = cx - W / 2, oy = cy - H / 2;
+  const trail = track.map(p => merc(p[2], p[3], z)).map(([x, y]) => `${(x - ox).toFixed(1)},${(y - oy).toFixed(1)}`).concat("200,200").join(" ");
+  const btn = (label, aria, fn) => html`<button className="w-11 h-11 rounded-full chip text-xl font-semibold" style=${{ background: "var(--panel)" }} aria-label=${aria} onClick=${fn}>${label}</button>`;
+  return html`<div className="absolute inset-0" dir="ltr">
+    <svg viewBox="0 0 400 400" preserveAspectRatio="xMidYMid slice" className="w-full h-full block" style=${{ background: "#1b1b1f" }} role="img" aria-label=${t.tabMap}>
+      ${mapDefs("dm-live")}${tileLayer(z, ox, oy, W, H, "dm-live")}
+      ${track.length > 0 && html`<polyline points=${trail} fill="none" stroke="var(--accent)" strokeWidth="4.5" strokeLinejoin="round" strokeLinecap="round"/>`}
+      <circle cx="200" cy="200" r="18" fill="#3b9cff" fillOpacity="0.22"/>
+      <circle cx="200" cy="200" r="7.5" fill="#3b9cff" stroke="#fff" strokeWidth="2.5"/>
+    </svg>
+    <div className="absolute flex flex-col gap-2" style=${{ top: 12, right: "max(12px, env(safe-area-inset-right, 0px))" }}>
+      ${btn("+", t.zoomIn, () => setZ(Math.min(18, z + 1)))}${btn("−", t.zoomOut, () => setZ(Math.max(12, z - 1)))}
+    </div>
+    ${isSim && html`<div className="absolute text-[11px] px-2 py-1 rounded-full chip" style=${{ top: 12, left: "max(12px, env(safe-area-inset-left, 0px))", background: "var(--panel)" }}>${t.simStart}</div>`}
+  </div>`;
 }
 
 function RunDetail({ x, t }) {
@@ -393,6 +424,8 @@ function App() {
   const [running, setRunning] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
+  const [tab, setTab] = useState("stats");
+  const [preview, setPreview] = useState(null);
   const [notice, setNotice] = useState("");
   const [confirmReset, setConfirmReset] = useState(false);
   const watchId = useRef(null), wake = useRef(null);
@@ -406,8 +439,8 @@ function App() {
       const step = r.speed * dt / 1000;
       r.dist += step;
       // fake route for the demo: a gently curving loop
-      if (!r.sim) r.sim = { lat: 32.0853, lon: 34.7818, hd: Math.random() * 360 };
-      r.sim.hd += 0.6 + (Math.random() - 0.5) * 6;
+      if (!r.sim) r.sim = { ...SIM_START, hd: Math.random() * 360 };
+      r.sim.hd += 0.12 + (Math.random() - 0.5) * 2.5;
       const rad = r.sim.hd * Math.PI / 180;
       r.sim.lat += step * Math.cos(rad) / 111320;
       r.sim.lon += step * Math.sin(rad) / (111320 * Math.cos(r.sim.lat * Math.PI / 180));
@@ -448,6 +481,13 @@ function App() {
     return () => clearInterval(id);
   }, [running, tick]);
 
+  useEffect(() => {
+    if (tab !== "map" || running || s.mode !== "gps" || !("geolocation" in navigator)) return;
+    const id = navigator.geolocation.watchPosition(p => { setPreview({ lat: p.coords.latitude, lon: p.coords.longitude }); setNotice(""); },
+      err => setNotice(err.code === 1 ? "blocked" : "waiting"), { enableHighAccuracy: true, maximumAge: 5000, timeout: 15000 });
+    return () => navigator.geolocation.clearWatch(id);
+  }, [tab, running, s.mode]);
+
   const startGps = () => {
     if (!("geolocation" in navigator)) { setNotice("noGeo"); return false; }
     run.current.lastPos = null;
@@ -455,6 +495,7 @@ function App() {
       const r = run.current, { latitude: lat, longitude: lon, accuracy } = p.coords;
       if (accuracy > 30) return; // shortcut: fixed accuracy gate; a Kalman filter would smooth better on bad signal
       const pos = { lat, lon };
+      r.curPos = pos;
       let moved = !r.lastPos;
       if (r.lastPos) { const d = haversine(r.lastPos, pos); if (d > 2 && d < 100) { r.dist += d; r.lastPos = pos; moved = true; } }
       else r.lastPos = pos;
@@ -525,7 +566,18 @@ function App() {
       <div className="text-end"><div className="label">${t.target}</div><div className="num text-3xl font-semibold" style=${{ color: "var(--accent)" }}>${fmtPace(s.target)}</div></div>
     </section>
 
-    <main className="flex-1 min-h-0 flex flex-col">
+    ${tab === "map" ? html`<main className="flex-1 min-h-0 relative overflow-hidden">
+      <${LiveMap} track=${r.track} t=${t} isSim=${s.mode === "sim" && !r.sim}
+        pos=${s.mode === "sim" ? (r.sim ? { lat: r.sim.lat, lon: r.sim.lon } : SIM_START) : (r.curPos || preview)}/>
+      <div className="absolute inset-x-0 bottom-0 gutter pb-3">
+        <div className="rounded-2xl grid grid-cols-3 gap-2 px-4 py-3" style=${{ background: "color-mix(in srgb, var(--bg) 88%, transparent)", border: "1px solid var(--line)" }}>
+          <div><div className="label">${t.distance}</div><div className="num text-3xl font-semibold">${(r.dist / 1000).toFixed(2)}</div></div>
+          <div className="text-center"><div className="label">${t.current}</div><div className="num text-3xl font-semibold">${fmtPace(r.pace)}</div></div>
+          <div className="text-end"><div className="label">${t.splitAvg}</div><div className="num text-3xl font-semibold">${fmtPace(splitPace)}</div></div>
+        </div>
+        ${notice && html`<p className="text-xs mt-2" style=${{ color: "var(--warn)" }}>${t[notice]}</p>`}
+      </div>
+    </main>` : html`<main className="flex-1 min-h-0 flex flex-col">
       <div className="text-center pt-4 pb-2 gutter">
         <div className="num font-bold leading-none" style=${{ fontSize: "clamp(88px, 30vw, 140px)" }}>${(r.dist / 1000).toFixed(2)}</div>
         <div className="label mt-1">${t.distance}</div>
@@ -569,9 +621,17 @@ function App() {
             <button key=${name} className=${`chip rounded-lg h-9 text-sm ${s.simPace === v ? "on" : ""}`} onClick=${() => set({ simPace: Math.max(150, v) })}>${name}</button>`)}
         </div>
       </div>`}
-    </main>
+    </main>`}
 
-    <footer className="gutter pt-3 flex items-center justify-between border-t hair" style=${{ paddingBottom: "calc(14px + env(safe-area-inset-bottom, 0px))" }}>
+    <footer className="border-t hair" style=${{ paddingBottom: "calc(14px + env(safe-area-inset-bottom, 0px))" }}>
+     <div className="gutter pt-2 grid grid-cols-2 gap-2" role="tablist">
+      ${[["stats", t.tabStats, html`<rect key="a" x="4" y="12" width="3" height="8" fill="currentColor"/><rect key="b" x="10.5" y="7" width="3" height="13" fill="currentColor"/><rect key="c" x="17" y="3" width="3" height="17" fill="currentColor"/>`],
+         ["map", t.tabMap, html`<path key="a" d="M12 21s-6-5.6-6-11a6 6 0 1 1 12 0c0 5.4-6 11-6 11z"/><circle key="b" cx="12" cy="10" r="2.2" fill="currentColor"/>`]].map(([k, name, ic]) => html`
+        <button key=${k} role="tab" aria-selected=${tab === k} className=${`chip rounded-xl h-10 flex items-center justify-center gap-2 text-sm font-semibold ${tab === k ? "on" : ""}`} onClick=${() => setTab(k)}>
+          <${Icon} size=${18} d=${ic}/>${name}
+        </button>`)}
+     </div>
+     <div className="gutter pt-3 flex items-center justify-between">
       <button className="w-28 h-12 rounded-full chip flex items-center justify-center gap-2 text-sm font-semibold disabled:opacity-40" style=${confirmReset ? { borderColor: "var(--bad)", color: "var(--bad)" } : {}} disabled=${!r.elapsed} onClick=${finish}>
         <${IStop}/>${confirmReset ? t.tapAgain : t.finish}
       </button>
@@ -581,6 +641,7 @@ function App() {
       <button className="w-28 h-12 rounded-full chip flex items-center justify-center gap-2 text-sm font-semibold" onClick=${() => setShowSettings(true)}>
         <${IGear}/>${t.settings}
       </button>
+     </div>
     </footer>
 
     ${showSettings && html`<${Settings} s=${s} t=${t} set=${set} running=${running || r.elapsed > 0} close=${() => setShowSettings(false)}/>`}
