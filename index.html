@@ -1,0 +1,473 @@
+<title>Pacer Run Tracker</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=Barlow:wght@400;500;600&family=Heebo:wght@400;500;600;700&display=swap">
+<script src="https://cdn.tailwindcss.com/3.4.17"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.3.1/umd/react.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.3.1/umd/react-dom.production.min.js"></script>
+<script>!function(n,e){"object"==typeof exports&&"undefined"!=typeof module?module.exports=e():"function"==typeof define&&define.amd?define(e):n.htm=e()}(this,function(){var n=function(e,t,u,s){var r;t[0]=0;for(var p=1;p<t.length;p++){var h=t[p++],o=t[p]?(t[0]|=h?1:2,u[t[p++]]):t[++p];3===h?s[0]=o:4===h?s[1]=Object.assign(s[1]||{},o):5===h?(s[1]=s[1]||{})[t[++p]]=o:6===h?s[1][t[++p]]+=o+"":h?(r=e.apply(o,n(e,o,u,["",null])),s.push(r),o[0]?t[0]|=2:(t[p-2]=0,t[p]=r)):s.push(o)}return s},e=new Map;return function(t){var u=e.get(this);return u||(u=new Map,e.set(this,u)),(u=n(this,u.get(t)||(u.set(t,u=function(n){for(var e,t,u=1,s="",r="",p=[0],h=function(n){1===u&&(n||(s=s.replace(/^\s*\n\s*|\s*\n\s*$/g,"")))?p.push(0,n,s):3===u&&(n||s)?(p.push(3,n,s),u=2):2===u&&"..."===s&&n?p.push(4,n,0):2===u&&s&&!n?p.push(5,0,!0,s):u>=5&&((s||!n&&5===u)&&(p.push(u,0,s,t),u=6),n&&(p.push(u,n,0,t),u=6)),s=""},o=0;o<n.length;o++){o&&(1===u&&h(),h(o));for(var f=0;f<n[o].length;f++)e=n[o][f],1===u?"<"===e?(h(),p=[p],u=3):s+=e:4===u?"--"===s&&">"===e?(u=1,s=""):s=e+s[0]:r?e===r?r="":s+=e:'"'===e||"'"===e?r=e:">"===e?(h(),u=1):u&&("="===e?(u=5,t=s,s=""):"/"===e&&(u<5||">"===n[o][f+1])?(h(),3===u&&(p=p[0]),u=p,(p=p[0]).push(2,0,u),u=0):" "===e||"\t"===e||"\n"===e||"\r"===e?(h(),u=2):s+=e),3===u&&"!--"===s&&(u=4,p=p[0])}return h(),p}(t)),u),arguments,[])).length>1?u:u[0]}});</script>
+<script>window.addEventListener("error",function(e){var r=document.getElementById("root");if(r&&!r.firstChild)r.innerHTML='<p style="padding:24px;color:#ffb020;font:15px system-ui">The tracker failed to load: '+String(e.message||"a script could not be loaded").replace(/</g,"&lt;")+'. Reload the page to try again.</p>';},true);</script>
+<style>
+/* Layout: one phone screen, stacked bands: clock, pace, hero distance, coach, splits, sim, control bar */
+:root {
+  color-scheme: dark;
+  --bg: #121214;
+  --panel: #1c1c20;
+  --line: #2b2a30;
+  --fg: #f4f2f0;
+  --muted: #8f8b93;
+  --accent: #fc4c02;
+  --accent-ink: #ffffff;
+  --good: #3ccf7a;
+  --warn: #ffb020;
+  --bad: #ff4d4d;
+  --font-num: "Barlow Condensed", "Heebo", "Arial Narrow", system-ui, sans-serif;
+  --font-body: "Barlow", "Heebo", system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+html, body { height: 100%; }
+body { background: var(--bg); color: var(--fg); font-family: var(--font-body); overflow: hidden; }
+#root { height: 100%; }
+.num { font-family: var(--font-num); font-variant-numeric: tabular-nums; letter-spacing: 0.01em; }
+.label { font-size: 11px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--muted); font-weight: 600; }
+.gutter { padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); }
+.panel { background: var(--panel); }
+.hair { border-color: var(--line); }
+button:focus-visible, input:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.go { background: var(--accent); color: var(--accent-ink); box-shadow: 0 8px 28px -8px color-mix(in srgb, var(--accent) 70%, transparent); }
+.chip { border: 1px solid var(--line); color: var(--muted); }
+.chip.on { border-color: var(--accent); color: var(--fg); background: color-mix(in srgb, var(--accent) 16%, transparent); }
+input[type=range] { accent-color: var(--accent); width: 100%; }
+@keyframes pulse { 0%,100% { opacity: 1 } 50% { opacity: .45 } }
+.live { animation: pulse 1.6s ease-in-out infinite; }
+@media (prefers-reduced-motion: reduce) { .live { animation: none; } }
+</style>
+
+<div id="root"></div>
+
+<script>
+const { useState, useRef, useEffect, useCallback } = React;
+const html = htm.bind(React.createElement);
+
+/* ---------- pure helpers ---------- */
+const pad = n => String(n).padStart(2, "0");
+const fmtTime = ms => { const s = Math.floor(ms / 1000); return `${pad(Math.floor(s / 3600))}:${pad(Math.floor(s / 60) % 60)}:${pad(s % 60)}`; };
+const fmtPace = s => (!isFinite(s) || s <= 0 || s >= 3600) ? "--:--" : `${Math.floor(s / 60)}:${pad(Math.round(s % 60) === 60 ? 0 : Math.round(s % 60))}`;
+// pace (s/km) vs target with tolerance band → "slow" | "fast" | "ok"
+const classify = (pace, target, tol) => pace > target + tol ? "slow" : pace < target - tol ? "fast" : "ok";
+const haversine = (a, b) => {
+  const R = 6371000, r = x => x * Math.PI / 180;
+  const dLat = r(b.lat - a.lat), dLon = r(b.lon - a.lon);
+  const h = Math.sin(dLat / 2) ** 2 + Math.cos(r(a.lat)) * Math.cos(r(b.lat)) * Math.sin(dLon / 2) ** 2;
+  return 2 * R * Math.asin(Math.sqrt(h));
+};
+
+/* ---------- language ---------- */
+const T = {
+  en: {
+    dir: "ltr", speech: "en-US",
+    sayPace: s => { const m = Math.floor(s / 60), r = Math.round(s % 60) % 60; return `${m} minute${m === 1 ? "" : "s"}${r ? ` ${r} second${r === 1 ? "" : "s"}` : ""}`; },
+    runSettings: "Run settings", target: "Target", targetPace: "Target pace /km", tolerance: "Tolerance ±",
+    voiceCoach: "Voice coach", paceAlerts: "Pace alerts", paceAlertsSub: "Says “speed up” or “slow down” when outside the band",
+    announceKm: "Announce each kilometer", announceKmSub: "Reads the split pace at every km", testVoice: "Test voice",
+    vs: { trying: "Playing test…", playing: "Voice is working.", noLangVoice: "No English voice found, using the device default.",
+      noTTS: "This view can't speak, so alerts play as tones: rising = speed up, falling = slow down. For speech, open the page in Chrome.",
+      silent: "Speech didn't start. Check the phone isn't on silent and media volume is up. Alerts will fall back to tones.",
+      error: "Speech failed on this device. Alerts will play as tones instead." },
+    source: "Tracking source", sim: "Simulation", simSub: "Test indoors", gps: "GPS", gpsSub: "Real location",
+    switchHint: "Pause and finish the run to switch source.", language: "Language", history: "Past runs", noRuns: "No saved runs yet. A run is saved when you tap Finish.", del: "Delete", confirmDel: "Tap again", closeHistory: "Close past runs", runs: n => `${n} run${n === 1 ? "" : "s"}`, total: "Total",
+    splitAvg: "Split avg. pace", current: "Current", distance: "Distance (km)", avg: "Avg", speed: "Speed", kmh: "km/h", perKm: "/km", sec: "s", m: "m",
+    ready: "Ready", pressStart: "Press start", settling: "Settling in", settlingSub: "Coaching starts after a few seconds",
+    onTarget: "On target", onTargetSub: (tol, p) => `Within ±${tol}s of ${p}`,
+    speedUp: "Speed up", speedUpSub: p => `Slower than ${p} /km`, slowDown: "Slow down", slowDownSub: p => `Faster than ${p} /km`,
+    splitsKm: "Splits (km)", pacePerKm: "Pace /km", emptySplits: "Each completed kilometer appears here, compared with your target.",
+    simPace: "Simulated runner pace", tooSlow: "Too slow", onPace: "On pace", tooFast: "Too fast",
+    finish: "Finish", tapAgain: "Tap again", settings: "Settings", start: "Start run", pause: "Pause run", close: "Close settings", toggleVoice: "Toggle voice alerts",
+    noGeo: "This browser has no location support. Switch to Simulation in settings.",
+    blocked: "Location access is blocked here. Open settings and switch to Simulation, or run this page in a browser that allows location.",
+    waiting: "Waiting for a GPS fix…",
+    vSpeedUp: p => `Speed up. Current pace ${p}.`, vSlowDown: p => `Slow down. Current pace ${p}.`, vBackOn: "Back on target pace.",
+    vKm: (n, p) => `Kilometer ${n}. Split pace ${p}.`, vStart: p => `Run started. Target pace ${p} per kilometer.`, vResume: "Resuming.", vPause: "Run paused.",
+    vFinish: (d, t) => `Run finished. ${d} kilometers in ${t}.`, vCheck: p => `Voice check. Target pace ${p} per kilometer.`,
+  },
+  he: {
+    dir: "rtl", speech: "he-IL",
+    sayPace: s => { const m = Math.floor(s / 60), r = Math.round(s % 60) % 60; return `${m === 1 ? "דקה אחת" : `${m} דקות`}${r ? ` ו-${r === 1 ? "שנייה אחת" : `${r} שניות`}` : ""}`; },
+    runSettings: "הגדרות ריצה", target: "יעד", targetPace: "קצב יעד לק״מ", tolerance: "טווח סטייה ±",
+    voiceCoach: "מאמן קולי", paceAlerts: "התראות קצב", paceAlertsSub: "אומר “תגביר” או “תאט” כשאתה מחוץ לטווח",
+    announceKm: "הכרזה בכל קילומטר", announceKmSub: "מקריא את קצב המקטע בכל ק״מ", testVoice: "בדיקת קול",
+    vs: { trying: "מנגן בדיקה…", playing: "הקול עובד.", noLangVoice: "אין קול עברי במכשיר, ההקראה בקול ברירת המחדל. אפשר להתקין קול עברי בהגדרות ההקראה של הטלפון, או לעבור ל-English.",
+      noTTS: "התצוגה הזו לא תומכת בהקראה, לכן ההתראות יושמעו כצפצופים: עולה = תגביר, יורד = תאט. להקראה, פתח את הדף ב-Chrome.",
+      silent: "ההקראה לא התחילה. בדוק שהטלפון לא על שקט ושעוצמת המדיה פתוחה. ההתראות יעברו לצפצופים.",
+      error: "ההקראה נכשלה במכשיר הזה. ההתראות יושמעו כצפצופים." },
+    source: "מקור מעקב", sim: "סימולציה", simSub: "בדיקה בבית", gps: "GPS", gpsSub: "מיקום אמיתי",
+    switchHint: "עצור וסיים את הריצה כדי להחליף מקור.", language: "שפה", history: "ריצות קודמות", noRuns: "עוד אין ריצות שמורות. ריצה נשמרת כשלוחצים סיום.", del: "מחק", confirmDel: "לחץ שוב", closeHistory: "סגור ריצות קודמות", runs: n => n === 1 ? "ריצה אחת" : `${n} ריצות`, total: "סה״כ",
+    splitAvg: "קצב ממוצע למקטע", current: "נוכחי", distance: "מרחק (ק״מ)", avg: "ממוצע", speed: "מהירות", kmh: "קמ״ש", perKm: "/ק״מ", sec: "ש׳", m: "מ׳",
+    ready: "מוכן", pressStart: "לחץ התחל", settling: "מתייצב", settlingSub: "האימון הקולי מתחיל אחרי כמה שניות",
+    onTarget: "בקצב היעד", onTargetSub: (tol, p) => `בטווח ±${tol} ש׳ מ-${p}`,
+    speedUp: "תגביר", speedUpSub: p => `איטי מ-${p} לק״מ`, slowDown: "תאט", slowDownSub: p => `מהיר מ-${p} לק״מ`,
+    splitsKm: "מקטעים (ק״מ)", pacePerKm: "קצב לק״מ", emptySplits: "כל קילומטר שמסתיים יופיע כאן, בהשוואה ליעד שלך.",
+    simPace: "קצב הרץ המדומה", tooSlow: "איטי מדי", onPace: "בקצב", tooFast: "מהיר מדי",
+    finish: "סיום", tapAgain: "לחץ שוב", settings: "הגדרות", start: "התחל ריצה", pause: "השהה ריצה", close: "סגור הגדרות", toggleVoice: "הפעל או השתק התראות קוליות",
+    noGeo: "הדפדפן הזה לא תומך במיקום. עבור לסימולציה בהגדרות.",
+    blocked: "הגישה למיקום חסומה כאן. עבור לסימולציה בהגדרות, או פתח את הדף בדפדפן שמאפשר מיקום.",
+    waiting: "ממתין לקליטת GPS…",
+    vSpeedUp: p => `תגביר. הקצב הנוכחי ${p}.`, vSlowDown: p => `תאט. הקצב הנוכחי ${p}.`, vBackOn: "חזרת לקצב היעד.",
+    vKm: (n, p) => `קילומטר ${n}. קצב המקטע ${p}.`, vStart: p => `הריצה התחילה. קצב יעד ${p} לקילומטר.`, vResume: "ממשיכים.", vPause: "הריצה הושהתה.",
+    vFinish: (d, t) => `הריצה הסתיימה. ${d} קילומטר בזמן ${t}.`, vCheck: p => `בדיקת קול. קצב יעד ${p} לקילומטר.`,
+  },
+};
+const sameKeys = (a, b) => Object.keys(a).sort().join() === Object.keys(b).sort().join();
+
+// self-checks
+console.assert(classify(330, 300, 10) === "slow" && classify(280, 300, 10) === "fast" && classify(305, 300, 10) === "ok", "classify");
+console.assert(fmtPace(312) === "5:12" && fmtTime(3723000) === "01:02:03", "format");
+console.assert(sameKeys(T.en, T.he) && T.he.sayPace(312) === "5 דקות ו-12 שניות", "i18n");
+
+const WINDOW_MS = 20000;      // rolling window for instantaneous pace
+const WARMUP_MS = 12000;      // no coaching before this
+const REPEAT_MS = 15000;      // repeat an alert while still off pace
+
+const load = () => { try { return JSON.parse(localStorage.getItem("pacer-settings")) || {}; } catch { return {}; } };
+const save = s => { try { localStorage.setItem("pacer-settings", JSON.stringify(s)); } catch {} };
+// shortcut: history lives only in this browser's storage; add a cloud store if runs must sync between devices
+const loadRuns = () => { try { return JSON.parse(localStorage.getItem("pacer-runs")) || []; } catch { return []; } };
+const saveRuns = runs => { try { localStorage.setItem("pacer-runs", JSON.stringify(runs)); return true; } catch { return false; } };
+
+const hasTTS = () => "speechSynthesis" in window && typeof SpeechSynthesisUtterance === "function";
+let audioCtx = null;
+// call from a tap so the browser allows audio later in the run
+function unlockAudio() {
+  try { audioCtx = audioCtx || new (window.AudioContext || window.webkitAudioContext)(); if (audioCtx.state === "suspended") audioCtx.resume(); } catch {}
+  try { if (hasTTS()) speechSynthesis.resume(); } catch {}
+}
+// fallback when speech is missing: rising tones = speed up, falling = slow down
+const TONES = { slow: [520, 780], fast: [780, 520], ok: [660], km: [880, 880, 880], info: [660, 880] };
+function beep(kind) {
+  if (!audioCtx) return;
+  (TONES[kind] || TONES.info).forEach((f, i) => {
+    const o = audioCtx.createOscillator(), g = audioCtx.createGain(), t0 = audioCtx.currentTime + i * 0.22;
+    o.frequency.value = f; o.connect(g); g.connect(audioCtx.destination);
+    g.gain.setValueAtTime(0.0001, t0); g.gain.exponentialRampToValueAtTime(0.4, t0 + 0.02); g.gain.exponentialRampToValueAtTime(0.0001, t0 + 0.18);
+    o.start(t0); o.stop(t0 + 0.2);
+  });
+}
+function speak(text, on, lang, kind = "info", report) {
+  if (!on) return;
+  if (!hasTTS()) { beep(kind); report?.("noTTS"); return; }
+  try {
+    if (speechSynthesis.speaking || speechSynthesis.pending) speechSynthesis.cancel();
+    speechSynthesis.resume();
+    const u = new SpeechSynthesisUtterance(text);
+    u.lang = lang; u.rate = 1.05; u.volume = 1;
+    const prefixes = lang.startsWith("he") ? ["he", "iw"] : [lang.slice(0, 2)]; // some Androids report Hebrew as "iw"
+    const voices = speechSynthesis.getVoices();
+    const v = voices.find(v => v.lang && prefixes.some(p => v.lang.toLowerCase().startsWith(p)));
+    if (v) u.voice = v;
+    let started = false;
+    u.onstart = () => { started = true; report?.(v || !voices.length ? "playing" : "noLangVoice"); };
+    u.onerror = e => { if (e.error !== "interrupted" && e.error !== "canceled") { started = true; beep(kind); report?.("error"); } };
+    speechSynthesis.speak(u);
+    setTimeout(() => { if (!started) { beep(kind); report?.("silent"); } }, 2500);
+  } catch { beep(kind); report?.("error"); }
+}
+
+/* ---------- icons (inline, Lucide-style strokes) ---------- */
+const Icon = ({ d, size = 22 }) => html`<svg width=${size} height=${size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">${d}</svg>`;
+const IPlay = () => html`<${Icon} size=${34} d=${html`<polygon points="7 4 20 12 7 20 7 4" fill="currentColor"/>`}/>`;
+const IPause = () => html`<${Icon} size=${34} d=${html`<rect key="a" x="6" y="4" width="4" height="16" fill="currentColor"/><rect key="b" x="14" y="4" width="4" height="16" fill="currentColor"/>`}/>`;
+const IGear = () => html`<${Icon} d=${html`<circle key="a" cx="12" cy="12" r="3"/><path key="b" d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33h0a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51h0a1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82v0a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>`}/>`;
+const IStop = () => html`<${Icon} d=${html`<rect x="6" y="6" width="12" height="12" rx="1.5" fill="currentColor"/>`}/>`;
+const IVol = ({ on }) => html`<${Icon} size=${18} d=${on ? html`<polygon key="a" points="11 5 6 9 2 9 2 15 6 15 11 19 11 5" fill="currentColor"/><path key="b" d="M15.5 8.5a5 5 0 0 1 0 7"/><path key="c" d="M19 5a10 10 0 0 1 0 14"/>` : html`<polygon key="a" points="11 5 6 9 2 9 2 15 6 15 11 19 11 5" fill="currentColor"/><line key="b" x1="22" y1="9" x2="16" y2="15"/><line key="c" x1="16" y1="9" x2="22" y2="15"/>`}/>`;
+const IClock = () => html`<${Icon} size=${18} d=${html`<path key="a" d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path key="b" d="M3 3v5h5"/><path key="c" d="M12 7v5l3 2"/>`}/>`;
+const IX = () => html`<${Icon} d=${html`<line key="a" x1="18" y1="6" x2="6" y2="18"/><line key="b" x1="6" y1="6" x2="18" y2="18"/>`}/>`;
+
+/* ---------- pieces ---------- */
+function Stepper({ label, value, onChange, step, min, max, fmt }) {
+  return html`<div className="flex items-center justify-between gap-3 py-3 border-b hair">
+    <span className="text-[15px]">${label}</span>
+    <div className="flex items-center gap-2" dir="ltr">
+      <button className="w-10 h-10 rounded-full chip text-xl" aria-label=${`− ${label}`} onClick=${() => onChange(Math.max(min, value - step))}>−</button>
+      <span className="num text-2xl w-20 text-center">${fmt(value)}</span>
+      <button className="w-10 h-10 rounded-full chip text-xl" aria-label=${`+ ${label}`} onClick=${() => onChange(Math.min(max, value + step))}>+</button>
+    </div>
+  </div>`;
+}
+
+function Toggle({ id, label, sub, on, onChange }) {
+  return html`<label htmlFor=${id} className="flex items-center justify-between gap-3 py-3 border-b hair cursor-pointer">
+    <span><span className="block text-[15px]">${label}</span>${sub && html`<span className="block text-xs" style=${{ color: "var(--muted)" }}>${sub}</span>`}</span>
+    <input id=${id} type="checkbox" className="sr-only" checked=${on} onChange=${e => onChange(e.target.checked)}/>
+    <span dir="ltr" className="relative shrink-0 w-12 h-7 rounded-full transition-colors" style=${{ background: on ? "var(--accent)" : "var(--line)" }}>
+      <span className="absolute top-1 w-5 h-5 rounded-full transition-all" style=${{ left: on ? "26px" : "4px", background: "var(--fg)" }}></span>
+    </span>
+  </label>`;
+}
+
+function Settings({ s, t, set, close, running }) {
+  const [vs, setVs] = useState("");
+  return html`<div className="fixed inset-0 z-20 flex items-end sm:items-center justify-center" style=${{ background: "rgba(0,0,0,.6)" }} onClick=${close}>
+    <div className="panel w-full sm:max-w-md rounded-t-2xl sm:rounded-2xl gutter pt-4" style=${{ paddingBottom: "calc(20px + env(safe-area-inset-bottom, 0px))", maxHeight: "92%", overflowY: "auto" }} onClick=${e => e.stopPropagation()}>
+      <div className="flex items-center justify-between mb-2">
+        <h2 className="num text-2xl font-semibold uppercase tracking-wide">${t.runSettings}</h2>
+        <button className="w-10 h-10 flex items-center justify-center rounded-full" aria-label=${t.close} onClick=${close}><${IX}/></button>
+      </div>
+      <div className="label mt-2">${t.language}</div>
+      <div className="grid grid-cols-2 gap-2 mt-2">
+        ${[["he", "עברית"], ["en", "English"]].map(([k, name]) => html`
+          <button key=${k} className=${`chip rounded-xl h-11 font-semibold ${s.lang === k ? "on" : ""}`} onClick=${() => set({ lang: k })}>${name}</button>`)}
+      </div>
+      <div className="label mt-5">${t.target}</div>
+      <${Stepper} label=${t.targetPace} value=${s.target} step=${5} min=${150} max=${720} fmt=${fmtPace} onChange=${v => set({ target: v })}/>
+      <${Stepper} label=${t.tolerance} value=${s.tol} step=${5} min=${5} max=${60} fmt=${v => `${v}${t.sec}`} onChange=${v => set({ tol: v })}/>
+      <div className="label mt-5">${t.voiceCoach}</div>
+      <${Toggle} id="opt-voice" label=${t.paceAlerts} sub=${t.paceAlertsSub} on=${s.voice} onChange=${v => set({ voice: v })}/>
+      <${Toggle} id="opt-splits" label=${t.announceKm} sub=${t.announceKmSub} on=${s.splitVoice} onChange=${v => set({ splitVoice: v })}/>
+      <button className="mt-3 w-full h-11 rounded-xl chip" onClick=${() => { unlockAudio(); setVs("trying"); speak(t.vCheck(t.sayPace(s.target)), true, t.speech, "info", setVs); }}>${t.testVoice}</button>
+      ${vs && html`<p className="text-xs mt-2" role="status" style=${{ color: vs === "playing" ? "var(--good)" : "var(--warn)" }}>${t.vs[vs]}</p>`}
+      <div className="label mt-5">${t.source}</div>
+      <div className="grid grid-cols-2 gap-2 mt-2">
+        ${[["sim", t.sim, t.simSub], ["gps", t.gps, t.gpsSub]].map(([k, name, sub]) => html`
+          <button key=${k} disabled=${running} className=${`chip rounded-xl p-3 text-start ${s.mode === k ? "on" : ""} ${running ? "opacity-50" : ""}`} onClick=${() => set({ mode: k })}>
+            <span className="block font-semibold">${name}</span><span className="block text-xs">${sub}</span>
+          </button>`)}
+      </div>
+      ${running && html`<p className="text-xs mt-2" style=${{ color: "var(--muted)" }}>${t.switchHint}</p>`}
+    </div>
+  </div>`;
+}
+
+function History({ t, lang, close }) {
+  const [runs, setRuns] = useState(loadRuns);
+  const [open, setOpen] = useState(null), [armed, setArmed] = useState(null);
+  const remove = id => {
+    if (armed !== id) { setArmed(id); setTimeout(() => setArmed(a => a === id ? null : a), 3000); return; }
+    const next = runs.filter(x => x.id !== id); saveRuns(next); setRuns(next); setArmed(null);
+  };
+  const totalKm = runs.reduce((a, x) => a + x.dist, 0) / 1000;
+  const when = ms => new Date(ms).toLocaleString(lang === "he" ? "he-IL" : "en-GB", { weekday: "short", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
+  return html`<div className="fixed inset-0 z-20 flex items-end sm:items-center justify-center" style=${{ background: "rgba(0,0,0,.6)" }} onClick=${close}>
+    <div className="panel w-full sm:max-w-md rounded-t-2xl sm:rounded-2xl gutter pt-4" style=${{ paddingBottom: "calc(20px + env(safe-area-inset-bottom, 0px))", maxHeight: "92%", overflowY: "auto" }} onClick=${e => e.stopPropagation()}>
+      <div className="flex items-center justify-between mb-1">
+        <h2 className="num text-2xl font-semibold uppercase tracking-wide">${t.history}</h2>
+        <button className="w-10 h-10 flex items-center justify-center rounded-full" aria-label=${t.closeHistory} onClick=${close}><${IX}/></button>
+      </div>
+      ${runs.length > 0 && html`<p className="text-sm mb-2" style=${{ color: "var(--muted)" }}>${t.runs(runs.length)} · ${t.total} <span className="num text-base" style=${{ color: "var(--fg)" }}>${totalKm.toFixed(1)}</span> ${t.perKm.replace("/", "")}</p>`}
+      ${runs.length === 0 && html`<p className="py-6 text-sm" style=${{ color: "var(--muted)" }}>${t.noRuns}</p>`}
+      <ul>
+        ${runs.map(x => html`<li key=${x.id} className="border-b hair">
+          <button className="w-full flex items-center justify-between gap-3 py-3 text-start" aria-expanded=${open === x.id} onClick=${() => setOpen(open === x.id ? null : x.id)}>
+            <span className="min-w-0"><span className="block text-sm" style=${{ color: "var(--muted)" }}>${when(x.date)}</span>
+              <span className="num text-2xl font-semibold">${(x.dist / 1000).toFixed(2)}</span><span className="text-sm" style=${{ color: "var(--muted)" }}> ${t.distance.replace(/^[^(]*\(|\)$/g, "")}</span></span>
+            <span className="text-end shrink-0" dir="ltr"><span className="block num text-xl">${fmtTime(x.elapsed)}</span><span className="block num text-sm" style=${{ color: "var(--muted)" }}>${fmtPace(x.elapsed / x.dist)}</span></span>
+          </button>
+          ${open === x.id && html`<div className="pb-3">
+            ${x.splits.map((secs, i) => html`<div key=${i} className="flex justify-between text-sm py-0.5"><span className="num">${i + 1}</span><span className="num" style=${{ color: Math.abs(secs - x.target) <= (x.tol || 10) ? "var(--good)" : secs > x.target ? "var(--bad)" : "var(--warn)" }}>${fmtPace(secs)}</span></div>`)}
+            <div className="flex justify-between items-center mt-2 text-sm"><span style=${{ color: "var(--muted)" }}>${t.target} ${fmtPace(x.target)}</span>
+              <button className="chip rounded-full px-4 h-9" style=${armed === x.id ? { borderColor: "var(--bad)", color: "var(--bad)" } : {}} onClick=${() => remove(x.id)}>${armed === x.id ? t.confirmDel : t.del}</button></div>
+          </div>`}
+        </li>`)}
+      </ul>
+    </div>
+  </div>`;
+}
+
+/* ---------- app ---------- */
+function App() {
+  const [s, setS] = useState(() => ({ target: 330, tol: 10, voice: true, splitVoice: true, mode: "sim", simPace: 330, lang: "he", ...load() }));
+  const set = patch => setS(prev => { const next = { ...prev, ...patch }; save(next); return next; });
+  const sRef = useRef(s); sRef.current = s;
+  const t = T[s.lang] || T.en;
+
+  useEffect(() => { document.documentElement.dir = t.dir; document.documentElement.lang = s.lang; }, [s.lang]);
+  useEffect(() => { try { speechSynthesis.getVoices(); } catch {} }, []); // warm the voice list
+
+  const fresh = () => ({ elapsed: 0, dist: 0, splitT: 0, splitD: 0, splits: [], samples: [], speed: 0, pace: NaN, coach: "idle", lastCueAt: -1e9, lastCue: "ok", lastPos: null, jitter: 0 });
+  const run = useRef(fresh());
+  const [, render] = useState(0);
+  const [running, setRunning] = useState(false);
+  const [showSettings, setShowSettings] = useState(false);
+  const [showHistory, setShowHistory] = useState(false);
+  const [notice, setNotice] = useState("");
+  const [confirmReset, setConfirmReset] = useState(false);
+  const watchId = useRef(null), wake = useRef(null);
+
+  const tick = useCallback((dt) => {
+    const r = run.current, st = sRef.current, tt = T[st.lang] || T.en;
+    r.elapsed += dt;
+    if (st.mode === "sim") {
+      r.jitter = Math.max(-0.06, Math.min(0.06, r.jitter * 0.97 + (Math.random() - 0.5) * 0.012));
+      r.speed = (1000 / st.simPace) * (1 + r.jitter);
+      r.dist += r.speed * dt / 1000;
+    }
+    r.samples.push({ t: r.elapsed, d: r.dist });
+    while (r.samples.length && r.elapsed - r.samples[0].t > WINDOW_MS) r.samples.shift();
+    const first = r.samples[0], dd = r.dist - first.d, dtw = (r.elapsed - first.t) / 1000;
+    r.pace = dd > 5 && dtw > 3 ? dtw / (dd / 1000) : NaN;
+
+    // kilometer splits
+    while (r.dist - r.splitD >= 1000) {
+      const secs = (r.elapsed - r.splitT) / 1000;
+      r.splits.push(secs); r.splitT = r.elapsed; r.splitD += 1000;
+      speak(tt.vKm(r.splits.length, tt.sayPace(secs)), st.splitVoice, tt.speech, "km");
+    }
+
+    // coaching
+    if (r.elapsed > WARMUP_MS && isFinite(r.pace)) {
+      const c = classify(r.pace, st.target, st.tol);
+      r.coach = c;
+      const changed = c !== r.lastCue, due = r.elapsed - r.lastCueAt > REPEAT_MS;
+      if (c !== "ok" && (changed || due)) {
+        speak(c === "slow" ? tt.vSpeedUp(tt.sayPace(r.pace)) : tt.vSlowDown(tt.sayPace(r.pace)), st.voice, tt.speech, c);
+        r.lastCueAt = r.elapsed; r.lastCue = c;
+      } else if (c === "ok" && changed) {
+        speak(tt.vBackOn, st.voice, tt.speech, "ok");
+        r.lastCueAt = r.elapsed; r.lastCue = c;
+      }
+    } else r.coach = "warmup";
+    render(x => x + 1);
+  }, []);
+
+  useEffect(() => {
+    if (!running) return;
+    let last = performance.now();
+    const id = setInterval(() => { const now = performance.now(); tick(now - last); last = now; }, 250);
+    return () => clearInterval(id);
+  }, [running, tick]);
+
+  const startGps = () => {
+    if (!("geolocation" in navigator)) { setNotice("noGeo"); return false; }
+    run.current.lastPos = null;
+    watchId.current = navigator.geolocation.watchPosition(p => {
+      const r = run.current, { latitude: lat, longitude: lon, accuracy } = p.coords;
+      if (accuracy > 30) return; // shortcut: fixed accuracy gate; a Kalman filter would smooth better on bad signal
+      const pos = { lat, lon };
+      if (r.lastPos) { const d = haversine(r.lastPos, pos); if (d > 2 && d < 100) { r.dist += d; r.lastPos = pos; } }
+      else r.lastPos = pos;
+      setNotice("");
+    }, err => setNotice(err.code === 1 ? "blocked" : "waiting"), { enableHighAccuracy: true, maximumAge: 0, timeout: 15000 });
+    return true;
+  };
+  const stopGps = () => { if (watchId.current != null) navigator.geolocation.clearWatch(watchId.current); watchId.current = null; };
+
+  const toggle = async () => {
+    unlockAudio();
+    setConfirmReset(false);
+    if (running) {
+      setRunning(false); stopGps(); speak(t.vPause, s.voice, t.speech);
+      try { await wake.current?.release(); } catch {} wake.current = null;
+      return;
+    }
+    if (s.mode === "gps" && !startGps()) return;
+    if (s.mode === "gps") setNotice("waiting");
+    speak(run.current.elapsed ? t.vResume : t.vStart(t.sayPace(s.target)), s.voice, t.speech);
+    try { wake.current = await navigator.wakeLock?.request("screen"); } catch {}
+    setRunning(true);
+  };
+
+  const finish = () => {
+    if (!confirmReset) { setConfirmReset(true); setTimeout(() => setConfirmReset(false), 3000); return; }
+    const r = run.current;
+    if (r.dist > 10) saveRuns([{ id: Date.now(), date: Date.now() - r.elapsed, dist: r.dist, elapsed: r.elapsed, splits: r.splits, target: s.target, tol: s.tol, mode: s.mode }, ...loadRuns()]);
+    if (r.dist > 10) speak(t.vFinish((r.dist / 1000).toFixed(2), fmtTime(r.elapsed).replace(/^00:/, "")), s.voice, t.speech);
+    setRunning(false); stopGps(); run.current = fresh(); setConfirmReset(false); setNotice(""); render(x => x + 1);
+  };
+
+  const r = run.current;
+  const curSplitD = r.dist - r.splitD;
+  const splitPace = curSplitD > 20 ? ((r.elapsed - r.splitT) / 1000) / (curSplitD / 1000) : NaN;
+  const avgPace = r.dist > 20 ? (r.elapsed / 1000) / (r.dist / 1000) : NaN;
+  const coachUI = {
+    idle: [t.ready, "var(--muted)", t.pressStart],
+    warmup: [t.settling, "var(--muted)", t.settlingSub],
+    ok: [t.onTarget, "var(--good)", t.onTargetSub(s.tol, fmtPace(s.target))],
+    slow: [t.speedUp, "var(--bad)", t.speedUpSub(fmtPace(s.target + s.tol))],
+    fast: [t.slowDown, "var(--warn)", t.slowDownSub(fmtPace(s.target - s.tol))],
+  }[running || r.elapsed ? r.coach : "idle"] || [t.ready, "var(--muted)", ""];
+
+  const rows = [...r.splits.map((secs, i) => ({ km: i + 1, secs, done: true })), ...(r.dist > 0 ? [{ km: r.splits.length + 1, secs: splitPace, done: false, part: curSplitD }] : [])].reverse();
+  const unit = html`<span className="text-sm" style=${{ color: "var(--muted)" }}> ${t.perKm}</span>`;
+
+  return html`<div className="h-full flex flex-col max-w-md mx-auto">
+    <header className="gutter pt-3 pb-2 flex items-center justify-between gap-3">
+      <span className="chip on rounded-full px-3 py-1 text-xs font-semibold uppercase tracking-wider">${s.mode === "sim" ? t.sim : t.gps}</span>
+      <div className="flex items-center gap-2" dir="ltr">
+        ${running && html`<span className="w-2 h-2 rounded-full live" style=${{ background: "var(--accent)" }}></span>`}
+        <span className="num text-4xl font-semibold">${fmtTime(r.elapsed)}</span>
+      </div>
+      <div className="flex items-center gap-2">
+        <button className="flex items-center chip rounded-full px-3 py-1" aria-label=${t.history} onClick=${() => setShowHistory(true)}><${IClock}/></button>
+        <button className="flex items-center chip rounded-full px-3 py-1" aria-label=${t.toggleVoice} onClick=${() => set({ voice: !s.voice })}><${IVol} on=${s.voice}/></button>
+      </div>
+    </header>
+
+    <section className="gutter grid grid-cols-3 gap-2 py-3 border-y hair">
+      <div><div className="label">${t.splitAvg}</div><div className="num text-3xl font-semibold">${fmtPace(splitPace)}${unit}</div></div>
+      <div className="text-center"><div className="label">${t.current}</div><div className="num text-3xl font-semibold">${fmtPace(r.pace)}</div></div>
+      <div className="text-end"><div className="label">${t.target}</div><div className="num text-3xl font-semibold" style=${{ color: "var(--accent)" }}>${fmtPace(s.target)}</div></div>
+    </section>
+
+    <main className="flex-1 min-h-0 flex flex-col">
+      <div className="text-center pt-4 pb-2 gutter">
+        <div className="num font-bold leading-none" style=${{ fontSize: "clamp(88px, 30vw, 140px)" }}>${(r.dist / 1000).toFixed(2)}</div>
+        <div className="label mt-1">${t.distance}</div>
+        <div className="flex justify-center gap-5 mt-2 text-sm" style=${{ color: "var(--muted)" }}>
+          <span>${t.avg} <span className="num text-base" style=${{ color: "var(--fg)" }}>${fmtPace(avgPace)}</span> ${t.perKm}</span>
+          <span>${t.speed} <span className="num text-base" style=${{ color: "var(--fg)" }}>${(r.dist > 0 && running ? r.speed * 3.6 || (isFinite(r.pace) ? 3600 / r.pace : 0) : 0).toFixed(1)}</span> ${t.kmh}</span>
+        </div>
+      </div>
+
+      <div className="gutter">
+        <div className="rounded-xl px-4 py-2.5 flex items-center justify-between gap-3" style=${{ border: `1px solid ${coachUI[1]}`, background: `color-mix(in srgb, ${coachUI[1]} 12%, transparent)` }} role="status" aria-live="polite">
+          <span className="num text-2xl font-semibold uppercase tracking-wide" style=${{ color: coachUI[1] }}>${coachUI[0]}</span>
+          <span className="text-xs text-end" style=${{ color: "var(--muted)" }}>${coachUI[2]}</span>
+        </div>
+        ${notice && html`<p className="text-xs mt-2" style=${{ color: "var(--warn)" }}>${t[notice]}</p>`}
+      </div>
+
+      <div className="gutter mt-3 flex-1 min-h-0 flex flex-col">
+        <div className="flex justify-between label pb-1 border-b hair"><span>${t.splitsKm}</span><span>${t.pacePerKm}</span></div>
+        <ol className="flex-1 min-h-0 overflow-y-auto">
+          ${rows.length === 0 && html`<li className="py-4 text-sm" style=${{ color: "var(--muted)" }}>${t.emptySplits}</li>`}
+          ${rows.map(row => {
+            const diff = row.secs - s.target, ok = isFinite(row.secs);
+            const col = !ok ? "var(--muted)" : Math.abs(diff) <= s.tol ? "var(--good)" : diff > 0 ? "var(--bad)" : "var(--warn)";
+            const w = ok ? Math.max(8, Math.min(100, (s.target / row.secs) * 70)) : 0;
+            return html`<li key=${row.km} className="flex items-center gap-3 py-2 border-b hair">
+              <span className="num text-xl w-12" style=${{ color: row.done ? "var(--fg)" : "var(--muted)" }}>${row.done ? row.km : `${row.km}·`}</span>
+              <span className="flex-1 h-2 rounded-full" style=${{ background: "var(--line)" }}><span className="block h-2 rounded-full" style=${{ width: `${w}%`, background: col, opacity: row.done ? 1 : .5 }}></span></span>
+              <span className="num text-xl w-14 text-end">${fmtPace(row.secs)}</span>
+              <span className="num text-sm w-12 text-end" dir="ltr" style=${{ color: col }}>${ok && row.done ? `${diff > 0 ? "+" : "−"}${Math.abs(Math.round(diff))}${t.sec}` : row.done ? "" : `${Math.round(row.part)}${t.m}`}</span>
+            </li>`;
+          })}
+        </ol>
+      </div>
+
+      ${s.mode === "sim" && html`<div className="gutter py-2 border-t hair">
+        <div className="flex items-center justify-between"><span className="label">${t.simPace}</span><span className="num text-lg">${fmtPace(s.simPace)}${unit}</span></div>
+        <input id="sim-pace" type="range" min="150" max="600" step="5" value=${s.simPace} onInput=${e => set({ simPace: +e.target.value })} aria-label=${t.simPace}/>
+        <div className="grid grid-cols-3 gap-2 mt-1">
+          ${[[t.tooSlow, s.target + s.tol + 30], [t.onPace, s.target], [t.tooFast, s.target - s.tol - 30]].map(([name, v]) => html`
+            <button key=${name} className=${`chip rounded-lg h-9 text-sm ${s.simPace === v ? "on" : ""}`} onClick=${() => set({ simPace: Math.max(150, v) })}>${name}</button>`)}
+        </div>
+      </div>`}
+    </main>
+
+    <footer className="gutter pt-3 flex items-center justify-between border-t hair" style=${{ paddingBottom: "calc(14px + env(safe-area-inset-bottom, 0px))" }}>
+      <button className="w-28 h-12 rounded-full chip flex items-center justify-center gap-2 text-sm font-semibold disabled:opacity-40" style=${confirmReset ? { borderColor: "var(--bad)", color: "var(--bad)" } : {}} disabled=${!r.elapsed} onClick=${finish}>
+        <${IStop}/>${confirmReset ? t.tapAgain : t.finish}
+      </button>
+      <button className="go w-20 h-20 rounded-full flex items-center justify-center" aria-label=${running ? t.pause : t.start} onClick=${toggle}>
+        ${running ? html`<${IPause}/>` : html`<${IPlay}/>`}
+      </button>
+      <button className="w-28 h-12 rounded-full chip flex items-center justify-center gap-2 text-sm font-semibold" onClick=${() => setShowSettings(true)}>
+        <${IGear}/>${t.settings}
+      </button>
+    </footer>
+
+    ${showSettings && html`<${Settings} s=${s} t=${t} set=${set} running=${running || r.elapsed > 0} close=${() => setShowSettings(false)}/>`}
+    ${showHistory && html`<${History} t=${t} lang=${s.lang} close=${() => setShowHistory(false)}/>`}
+  </div>`;
+}
+
+ReactDOM.createRoot(document.getElementById("root")).render(html`<${App}/>`);
+</script>
