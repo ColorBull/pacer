@@ -61,6 +61,31 @@ const haversine = (a, b) => {
   return 2 * R * Math.asin(Math.sqrt(h));
 };
 
+// track point = [elapsedMs, distM, lat, lon]
+const PACE_WIN_MS = 20000;
+function paceSeries(track) {
+  const out = []; let j = 0;
+  for (let i = 1; i < track.length; i++) {
+    while (j < i - 1 && track[i][0] - track[j + 1][0] >= PACE_WIN_MS) j++;
+    const dd = track[i][1] - track[j][1], dt = (track[i][0] - track[j][0]) / 1000;
+    if (dd > 5 && dt > 3) out.push({ d: track[i][1], p: dt / (dd / 1000) });
+  }
+  return out;
+}
+const merc = (lat, lon, z) => { const n = 256 * 2 ** z, s = Math.sin(lat * Math.PI / 180);
+  return [(lon + 180) / 360 * n, (0.5 - Math.log((1 + s) / (1 - s)) / (4 * Math.PI)) * n]; };
+// picks the deepest zoom where the whole route fits inside w×h minus padding
+function fitRoute(track, w, h, pad) {
+  for (let z = 17; z >= 2; z--) {
+    const xy = track.map(p => merc(p[2], p[3], z));
+    const xs = xy.map(p => p[0]), ys = xy.map(p => p[1]);
+    const minX = Math.min(...xs), maxX = Math.max(...xs), minY = Math.min(...ys), maxY = Math.max(...ys);
+    if (maxX - minX <= w - 2 * pad && maxY - minY <= h - 2 * pad || z === 2)
+      return { z, ox: (minX + maxX) / 2 - w / 2, oy: (minY + maxY) / 2 - h / 2, xy };
+  }
+}
+const pctl = (arr, q) => { const a = [...arr].sort((x, y) => x - y); return a[Math.min(a.length - 1, Math.floor(q * a.length))]; };
+
 /* ---------- language ---------- */
 const T = {
   en: {
@@ -74,7 +99,7 @@ const T = {
       silent: "Speech didn't start. Check the phone isn't on silent and media volume is up. Alerts will fall back to tones.",
       error: "Speech failed on this device. Alerts will play as tones instead." },
     source: "Tracking source", sim: "Simulation", simSub: "Test indoors", gps: "GPS", gpsSub: "Real location",
-    switchHint: "Pause and finish the run to switch source.", language: "Language", installTitle: "App", installBtn: "Install as app", installIos: "In Safari tap the Share button, then “Add to Home Screen”.", installed: "Installed as an app.", installOther: "Use your browser menu: “Install app” or “Add to Home screen”.", history: "Past runs", noRuns: "No saved runs yet. A run is saved when you tap Finish.", del: "Delete", confirmDel: "Tap again", closeHistory: "Close past runs", runs: n => `${n} run${n === 1 ? "" : "s"}`, total: "Total",
+    switchHint: "Pause and finish the run to switch source.", language: "Language", route: "Route", paceChart: "Pace", time: "Time", avgPace: "Avg pace", fastest: "Fastest split", noTrack: "No route was recorded for this run.", mapCredit: "© OpenStreetMap · © CARTO", installTitle: "App", installBtn: "Install as app", installIos: "In Safari tap the Share button, then “Add to Home Screen”.", installed: "Installed as an app.", installOther: "Use your browser menu: “Install app” or “Add to Home screen”.", history: "Past runs", noRuns: "No saved runs yet. A run is saved when you tap Finish.", del: "Delete", confirmDel: "Tap again", closeHistory: "Close past runs", runs: n => `${n} run${n === 1 ? "" : "s"}`, total: "Total",
     splitAvg: "Split avg. pace", current: "Current", distance: "Distance (km)", avg: "Avg", speed: "Speed", kmh: "km/h", perKm: "/km", sec: "s", m: "m",
     ready: "Ready", pressStart: "Press start", settling: "Settling in", settlingSub: "Coaching starts after a few seconds",
     onTarget: "On target", onTargetSub: (tol, p) => `Within ±${tol}s of ${p}`,
@@ -100,7 +125,7 @@ const T = {
       silent: "ההקראה לא התחילה. בדוק שהטלפון לא על שקט ושעוצמת המדיה פתוחה. ההתראות יעברו לצפצופים.",
       error: "ההקראה נכשלה במכשיר הזה. ההתראות יושמעו כצפצופים." },
     source: "מקור מעקב", sim: "סימולציה", simSub: "בדיקה בבית", gps: "GPS", gpsSub: "מיקום אמיתי",
-    switchHint: "עצור וסיים את הריצה כדי להחליף מקור.", language: "שפה", installTitle: "אפליקציה", installBtn: "התקן כאפליקציה", installIos: "בספארי לוחצים על כפתור השיתוף ואז “הוסף למסך הבית”.", installed: "מותקן כאפליקציה.", installOther: "בתפריט הדפדפן בוחרים “התקן אפליקציה” או “הוסף למסך הבית”.", history: "ריצות קודמות", noRuns: "עוד אין ריצות שמורות. ריצה נשמרת כשלוחצים סיום.", del: "מחק", confirmDel: "לחץ שוב", closeHistory: "סגור ריצות קודמות", runs: n => n === 1 ? "ריצה אחת" : `${n} ריצות`, total: "סה״כ",
+    switchHint: "עצור וסיים את הריצה כדי להחליף מקור.", language: "שפה", route: "מסלול", paceChart: "קצב", time: "זמן", avgPace: "קצב ממוצע", fastest: "הקטע המהיר", noTrack: "לא נשמר מסלול לריצה הזו.", mapCredit: "© OpenStreetMap · © CARTO", installTitle: "אפליקציה", installBtn: "התקן כאפליקציה", installIos: "בספארי לוחצים על כפתור השיתוף ואז “הוסף למסך הבית”.", installed: "מותקן כאפליקציה.", installOther: "בתפריט הדפדפן בוחרים “התקן אפליקציה” או “הוסף למסך הבית”.", history: "ריצות קודמות", noRuns: "עוד אין ריצות שמורות. ריצה נשמרת כשלוחצים סיום.", del: "מחק", confirmDel: "לחץ שוב", closeHistory: "סגור ריצות קודמות", runs: n => n === 1 ? "ריצה אחת" : `${n} ריצות`, total: "סה״כ",
     splitAvg: "קצב ממוצע למקטע", current: "נוכחי", distance: "מרחק (ק״מ)", avg: "ממוצע", speed: "מהירות", kmh: "קמ״ש", perKm: "/ק״מ", sec: "ש׳", m: "מ׳",
     ready: "מוכן", pressStart: "לחץ התחל", settling: "מתייצב", settlingSub: "האימון הקולי מתחיל אחרי כמה שניות",
     onTarget: "בקצב היעד", onTargetSub: (tol, p) => `בטווח ±${tol} ש׳ מ-${p}`,
@@ -121,6 +146,8 @@ const sameKeys = (a, b) => Object.keys(a).sort().join() === Object.keys(b).sort(
 // self-checks
 console.assert(classify(330, 300, 10) === "slow" && classify(280, 300, 10) === "fast" && classify(305, 300, 10) === "ok", "classify");
 console.assert(fmtPace(312) === "5:12" && fmtTime(3723000) === "01:02:03", "format");
+console.assert((() => { const tr = Array.from({ length: 30 }, (_, i) => [i * 3000, i * 10, 32, 34.8]); const ps = paceSeries(tr); return ps.length > 0 && ps.every(x => Math.abs(x.p - 300) < 0.01); })(), "paceSeries");
+console.assert((() => { const tr = [[0, 0, 32.08, 34.80], [1, 1, 32.09, 34.81]]; const f = fitRoute(tr, 400, 240, 28); return f.xy.every(([x, y]) => x - f.ox >= 27 && x - f.ox <= 373 && y - f.oy >= 27 && y - f.oy <= 213); })(), "fitRoute");
 console.assert(sameKeys(T.en, T.he) && T.he.sayPace(312) === "5 דקות ו-12 שניות", "i18n");
 
 const WINDOW_MS = 20000;      // rolling window for instantaneous pace
@@ -255,9 +282,68 @@ function Settings({ s, t, set, close, running }) {
   </div>`;
 }
 
-function History({ t, lang, close }) {
+function RouteMap({ track, t }) {
+  const W = 400, H = 240, { z, ox, oy, xy } = fitRoute(track, W, H, 28), n = 2 ** z, tiles = [];
+  for (let tx = Math.floor(ox / 256); tx <= Math.floor((ox + W) / 256); tx++)
+    for (let ty = Math.floor(oy / 256); ty <= Math.floor((oy + H) / 256); ty++)
+      if (ty >= 0 && ty < n) tiles.push(html`<image key=${tx + "_" + ty} href=${`https://${"abcd"[(tx + ty) & 3]}.basemaps.cartocdn.com/dark_all/${z}/${((tx % n) + n) % n}/${ty}@2x.png`} x=${tx * 256 - ox} y=${ty * 256 - oy} width="256" height="256"/>`);
+  const pts = xy.map(([x, y]) => `${(x - ox).toFixed(1)},${(y - oy).toFixed(1)}`);
+  const [sx, sy] = pts[0].split(","), [ex, ey] = pts[pts.length - 1].split(",");
+  return html`<figure className="mt-2" dir="ltr">
+    <svg viewBox=${`0 0 ${W} ${H}`} className="w-full block rounded-xl" style=${{ background: "#1b1b1f" }} role="img" aria-label=${t.route}>
+      ${tiles}
+      <polyline points=${pts.join(" ")} fill="none" stroke="#000" strokeOpacity="0.45" strokeWidth="7" strokeLinejoin="round" strokeLinecap="round"/>
+      <polyline points=${pts.join(" ")} fill="none" stroke="var(--accent)" strokeWidth="4" strokeLinejoin="round" strokeLinecap="round"/>
+      <circle cx=${sx} cy=${sy} r="6" fill="var(--good)" stroke="#fff" strokeWidth="2"/>
+      <circle cx=${ex} cy=${ey} r="6" fill="#fff" stroke="var(--accent)" strokeWidth="3"/>
+    </svg>
+    <figcaption className="text-[10px] mt-1 text-end" style=${{ color: "var(--muted)" }}>${t.mapCredit}</figcaption>
+  </figure>`;
+}
+
+function PaceChart({ series, target }) {
+  const W = 400, H = 190, L = 40, R = 8, Tp = 8, B = 22, pw = W - L - R, ph = H - Tp - B;
+  const ps = series.map(x => x.p), dMax = series[series.length - 1].d;
+  let lo = Math.max(120, Math.min(pctl(ps, 0.03), target) - 20), hi = Math.min(1200, Math.max(pctl(ps, 0.97), target) + 20);
+  const yOf = p => Tp + (Math.min(hi, Math.max(lo, p)) - lo) / (hi - lo) * ph; // faster pace sits higher
+  const xOf = d => L + d / dMax * pw;
+  const line = series.map(x => `${xOf(x.d).toFixed(1)},${yOf(x.p).toFixed(1)}`).join(" ");
+  const area = `M${xOf(series[0].d).toFixed(1)},${Tp + ph} L${line.replace(/ /g, " L")} L${xOf(dMax).toFixed(1)},${Tp + ph} Z`;
+  const step = Math.max(15, Math.ceil((hi - lo) / 4 / 15) * 15), yTicks = [];
+  for (let p = Math.ceil(lo / step) * step; p <= hi; p += step) yTicks.push(p);
+  const km = dMax / 1000, xs = km < 1.5 ? 0.2 : km < 4 ? 0.5 : km < 10 ? 1 : 2, xTicks = [];
+  for (let k = xs; k < km - xs * 0.3; k += xs) xTicks.push(+k.toFixed(1));
+  return html`<svg viewBox=${`0 0 ${W} ${H}`} className="w-full block mt-2" dir="ltr" role="img" aria-label="pace chart">
+    ${yTicks.map(p => html`<g key=${"y" + p}><line x1=${L} x2=${W - R} y1=${yOf(p)} y2=${yOf(p)} stroke="var(--line)" strokeWidth="1"/>
+      <text x=${L - 6} y=${yOf(p) + 3.5} textAnchor="end" fontSize="10" fill="var(--muted)" className="num">${fmtPace(p)}</text></g>`)}
+    ${xTicks.map(k => html`<g key=${"x" + k}><line x1=${xOf(k * 1000)} x2=${xOf(k * 1000)} y1=${Tp} y2=${Tp + ph} stroke="var(--line)" strokeWidth="1"/>
+      <text x=${xOf(k * 1000)} y=${H - 6} textAnchor="middle" fontSize="10" fill="var(--muted)" className="num">${k} km</text></g>`)}
+    <path d=${area} fill="var(--accent)" fillOpacity="0.28"/>
+    <polyline points=${line} fill="none" stroke="var(--accent)" strokeWidth="1.8" strokeLinejoin="round"/>
+    <line x1=${L} x2=${W - R} y1=${yOf(target)} y2=${yOf(target)} stroke="var(--fg)" strokeWidth="1.2" strokeDasharray="5 4"/>
+    <text x=${W - R - 2} y=${yOf(target) - 5} textAnchor="end" fontSize="10" fill="var(--fg)" className="num">${fmtPace(target)}</text>
+  </svg>`;
+}
+
+function RunDetail({ x, t }) {
+  const hasTrack = x.track && x.track.length > 2, series = hasTrack ? paceSeries(x.track) : [];
+  const fastest = x.splits.length ? Math.min(...x.splits) : NaN;
+  const stat = (label, val) => html`<div><div className="label">${label}</div><div className="num text-xl font-semibold" dir="ltr">${val}</div></div>`;
+  return html`<div>
+    <div className="grid grid-cols-2 gap-x-4 gap-y-2 mb-1">
+      ${stat(t.distance, (x.dist / 1000).toFixed(2))}${stat(t.time, fmtTime(x.elapsed))}
+      ${stat(t.avgPace, fmtPace(x.elapsed / x.dist))}${stat(t.fastest, fmtPace(fastest))}
+    </div>
+    ${hasTrack ? html`<div><div className="label mt-3">${t.route}</div><${RouteMap} track=${x.track} t=${t}/></div>`
+      : html`<p className="text-xs mt-3" style=${{ color: "var(--muted)" }}>${t.noTrack}</p>`}
+    ${series.length > 2 && html`<div><div className="label mt-3">${t.paceChart}</div><${PaceChart} series=${series} target=${x.target}/></div>`}
+    ${x.splits.length > 0 && html`<div className="label mt-3 mb-1">${t.splitsKm}</div>`}
+  </div>`;
+}
+
+function History({ t, lang, close, openId }) {
   const [runs, setRuns] = useState(loadRuns);
-  const [open, setOpen] = useState(null), [armed, setArmed] = useState(null);
+  const [open, setOpen] = useState(openId ?? null), [armed, setArmed] = useState(null);
   const remove = id => {
     if (armed !== id) { setArmed(id); setTimeout(() => setArmed(a => a === id ? null : a), 3000); return; }
     const next = runs.filter(x => x.id !== id); saveRuns(next); setRuns(next); setArmed(null);
@@ -280,6 +366,7 @@ function History({ t, lang, close }) {
             <span className="text-end shrink-0" dir="ltr"><span className="block num text-xl">${fmtTime(x.elapsed)}</span><span className="block num text-sm" style=${{ color: "var(--muted)" }}>${fmtPace(x.elapsed / x.dist)}</span></span>
           </button>
           ${open === x.id && html`<div className="pb-3">
+            <${RunDetail} x=${x} t=${t}/>
             ${x.splits.map((secs, i) => html`<div key=${i} className="flex justify-between text-sm py-0.5"><span className="num">${i + 1}</span><span className="num" style=${{ color: Math.abs(secs - x.target) <= (x.tol || 10) ? "var(--good)" : secs > x.target ? "var(--bad)" : "var(--warn)" }}>${fmtPace(secs)}</span></div>`)}
             <div className="flex justify-between items-center mt-2 text-sm"><span style=${{ color: "var(--muted)" }}>${t.target} ${fmtPace(x.target)}</span>
               <button className="chip rounded-full px-4 h-9" style=${armed === x.id ? { borderColor: "var(--bad)", color: "var(--bad)" } : {}} onClick=${() => remove(x.id)}>${armed === x.id ? t.confirmDel : t.del}</button></div>
@@ -300,7 +387,7 @@ function App() {
   useEffect(() => { document.documentElement.dir = t.dir; document.documentElement.lang = s.lang; }, [s.lang]);
   useEffect(() => { try { speechSynthesis.getVoices(); } catch {} }, []); // warm the voice list
 
-  const fresh = () => ({ elapsed: 0, dist: 0, splitT: 0, splitD: 0, splits: [], samples: [], speed: 0, pace: NaN, coach: "idle", lastCueAt: -1e9, lastCue: "ok", lastPos: null, jitter: 0 });
+  const fresh = () => ({ elapsed: 0, dist: 0, splitT: 0, splitD: 0, splits: [], samples: [], speed: 0, pace: NaN, coach: "idle", lastCueAt: -1e9, lastCue: "ok", lastPos: null, jitter: 0, track: [], lastPushT: -1e9, sim: null });
   const run = useRef(fresh());
   const [, render] = useState(0);
   const [running, setRunning] = useState(false);
@@ -316,7 +403,15 @@ function App() {
     if (st.mode === "sim") {
       r.jitter = Math.max(-0.06, Math.min(0.06, r.jitter * 0.97 + (Math.random() - 0.5) * 0.012));
       r.speed = (1000 / st.simPace) * (1 + r.jitter);
-      r.dist += r.speed * dt / 1000;
+      const step = r.speed * dt / 1000;
+      r.dist += step;
+      // fake route for the demo: a gently curving loop
+      if (!r.sim) r.sim = { lat: 32.0853, lon: 34.7818, hd: Math.random() * 360 };
+      r.sim.hd += 0.6 + (Math.random() - 0.5) * 6;
+      const rad = r.sim.hd * Math.PI / 180;
+      r.sim.lat += step * Math.cos(rad) / 111320;
+      r.sim.lon += step * Math.sin(rad) / (111320 * Math.cos(r.sim.lat * Math.PI / 180));
+      if (r.elapsed - r.lastPushT >= 3000) { r.track.push([Math.round(r.elapsed), Math.round(r.dist), +r.sim.lat.toFixed(5), +r.sim.lon.toFixed(5)]); r.lastPushT = r.elapsed; }
     }
     r.samples.push({ t: r.elapsed, d: r.dist });
     while (r.samples.length && r.elapsed - r.samples[0].t > WINDOW_MS) r.samples.shift();
@@ -360,8 +455,11 @@ function App() {
       const r = run.current, { latitude: lat, longitude: lon, accuracy } = p.coords;
       if (accuracy > 30) return; // shortcut: fixed accuracy gate; a Kalman filter would smooth better on bad signal
       const pos = { lat, lon };
-      if (r.lastPos) { const d = haversine(r.lastPos, pos); if (d > 2 && d < 100) { r.dist += d; r.lastPos = pos; } }
+      let moved = !r.lastPos;
+      if (r.lastPos) { const d = haversine(r.lastPos, pos); if (d > 2 && d < 100) { r.dist += d; r.lastPos = pos; moved = true; } }
       else r.lastPos = pos;
+      // shortcut: one point per 3 s keeps an hour's run near 50 KB in local storage
+      if (moved && r.elapsed - r.lastPushT >= 3000) { r.track.push([Math.round(r.elapsed), Math.round(r.dist), +lat.toFixed(5), +lon.toFixed(5)]); r.lastPushT = r.elapsed; }
       setNotice("");
     }, err => setNotice(err.code === 1 ? "blocked" : "waiting"), { enableHighAccuracy: true, maximumAge: 0, timeout: 15000 });
     return true;
@@ -386,7 +484,9 @@ function App() {
   const finish = () => {
     if (!confirmReset) { setConfirmReset(true); setTimeout(() => setConfirmReset(false), 3000); return; }
     const r = run.current;
-    if (r.dist > 10) saveRuns([{ id: Date.now(), date: Date.now() - r.elapsed, dist: r.dist, elapsed: r.elapsed, splits: r.splits, target: s.target, tol: s.tol, mode: s.mode }, ...loadRuns()]);
+    const runId = Date.now();
+    const saved = r.dist > 10 && saveRuns([{ id: runId, date: runId - r.elapsed, dist: r.dist, elapsed: r.elapsed, splits: r.splits, target: s.target, tol: s.tol, mode: s.mode, track: r.track }, ...loadRuns()]);
+    if (saved) setShowHistory(runId);
     if (r.dist > 10) speak(t.vFinish((r.dist / 1000).toFixed(2), fmtTime(r.elapsed).replace(/^00:/, "")), s.voice, t.speech);
     setRunning(false); stopGps(); run.current = fresh(); setConfirmReset(false); setNotice(""); render(x => x + 1);
   };
@@ -484,7 +584,7 @@ function App() {
     </footer>
 
     ${showSettings && html`<${Settings} s=${s} t=${t} set=${set} running=${running || r.elapsed > 0} close=${() => setShowSettings(false)}/>`}
-    ${showHistory && html`<${History} t=${t} lang=${s.lang} close=${() => setShowHistory(false)}/>`}
+    ${showHistory && html`<${History} t=${t} lang=${s.lang} openId=${showHistory === true ? null : showHistory} close=${() => setShowHistory(false)}/>`}
   </div>`;
 }
 
